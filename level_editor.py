@@ -1,5 +1,6 @@
 import bpy
 import math
+import bpy_extras
 bl_info = {
     "name": "レベルエディタ",
     "author": "rikuri isobe",
@@ -40,31 +41,61 @@ class MYADDON_OT_create_ico_sphere(bpy.types.Operator):
         return{'FINISHED'} 
     
 #オペレータシーン出力
-class MYADDON_OT_export_scene(bpy.types.Operator):
+class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelper):
     bl_idname = "myaddon.myaddon_ot_export_scene"
     bl_label = "シーン出力"
     bl_description = "シーン情報をExportします"
     
+    filename_ext = ".scene"
+    def export(self):
+        """ファイルに出力"""
+        print("シーン情報出力開始・・・ %r" % self.filepath)
+        with open(self.filepath,"wt") as file:
+            file.write("SCENE\n")
+        
+            for object in bpy.context.scene.objects:
+            
+                if (object.parent):
+                    continue
+                self.parse_scene_recursive(file,object,0)
+                if object.parent:
+                    print("Parent:" + object.parent.name)
+                print()
+
+    def parse_scene_recursive(self,file,object,level):
+        """シーン解析用再帰関数"""
+
+        indent = ''
+        for i in range(level):
+            indent += "\t"
+
+        for child in object.children:
+            self.parse_scene_recursive(file,child,level + 1)
+
+        self.write_and_print(file,indent + object.type + " - " + object.name)
+        trans,rot,scale = object.matrix_local.decompose()
+        rot = rot.to_euler()
+        rot.x = math.degrees(rot.x)
+        rot.y = math.degrees(rot.y)
+        rot.z = math.degrees(rot.z)
+        self.write_and_print(file,indent +"Trans(%f,%f,%f)"% (trans.x,trans.y,trans.z))
+        self.write_and_print(file,indent +"Rot(%f,%f,%f)"% (rot.x,rot.y,rot.z))
+        self.write_and_print(file,indent +"Scale(%f,%f,%f)"% (scale.x,scale.y,scale.z))
+        self.write_and_print(file,'')
+
+    def write_and_print(self,file,str):
+        print(str)
+        file.write(str)
+        file.write('\n')
+        #self.write_and_print(file,"あいうえお")
+        
     def execute(self,context):
         print("シーン情報をExportします")
-        for object in bpy.context.scene.objects:
-            print(object.type + " - " + object.name)   
-            trans,rot,scale = object.matrix_local.decompose()
-            rot = rot.to_euler()
-            rot.x = math.degrees(rot.x)
-            rot.y = math.degrees(rot.y)
-            rot.z = math.degrees(rot.z)
-            print("Trans(%f,%f,%f)"% (trans.x,trans.y,trans.z))
-            print("Rot(%f,%f,%f)"% (rot.x,rot.y,rot.z))
-            print("Scale(%f,%f,%f)"% (scale.x,scale.y,scale.z))
-            if object.parent:
-                print("Parent:" + object.parent.name)
-            print()
+        self.export()
         
         print("シーン情報をExportしました")
         self.report({'INFO'},"シーン情報をExportしました")
-        
-        return{'FINISHED'}
+        return{'FINISHED'}      
     
 #トップバーの拡張メニュー
 class TOPBAR_MT_my_menu(bpy.types.Menu):
