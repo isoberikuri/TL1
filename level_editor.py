@@ -4,6 +4,7 @@ import bpy_extras
 import gpu
 import gpu_extras.batch
 import copy
+import mathutils
 bl_info = {
     "name": "レベルエディタ",
     "author": "rikuri isobe",
@@ -86,6 +87,14 @@ class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelpe
         self.write_and_print(file,indent +"S(%f,%f,%f)"% (scale.x,scale.y,scale.z))
         if "file_name" in object:
             self.write_and_print(file,indent + "N %s" % object["file_name"])
+        if "collider" in object:
+            self.write_and_print(file,indent + "C %s" % object["collider"])
+            temp_str = indent + "CC %f %f %f"
+            temp_str %= (object["collider_center"][0],object["collider_center"][1],object["collider_center"][2])
+            self.write_and_print(file,temp_str)
+            temp_str = indent + "CC %f %f %f"
+            temp_str %= (object["collider_size"][0],object["collider_size"][1],object["collider_size"][2])
+            self.write_and_print(file,temp_str)
         self.write_and_print(file, indent + 'END')
         self.write_and_print(file,'')
 
@@ -129,7 +138,6 @@ class MYADDON_OT_add_filename(bpy.types.Operator):
         context.object["file_name"] = ""
         return{'FINISHED'}
 
-
 #コライダー描画
 class DrawCollider:
     #描画ハンドル
@@ -150,12 +158,25 @@ class DrawCollider:
         ]
         size = [2,2,2]
         for object in bpy.context.scene.objects:
+            if not "collider" in object:
+                continue
+            center = mathutils.Vector((0,0,0))
+            size = mathutils.Vector((2,2,2))
+
+            center[0]=object["collider_center"][0]
+            center[1]=object["collider_center"][1]
+            center[2]=object["collider_center"][2]
+            size[0]=object["collider_size"][0]
+            size[1]=object["collider_size"][1]
+            size[2]=object["collider_size"][2]
+
             start = len(vertices["pos"])
             for offset in offsets:
-                pos = copy.copy(object.location)
+                pos = copy.copy(center)
                 pos[0]+=offset[0]*size[0]
                 pos[1]+=offset[1]*size[1]
                 pos[2]+=offset[2]*size[2]
+                pos = object.matrix_world @ pos
                 vertices['pos'].append(pos)
                 indices.append([start+0,start+1])
                 indices.append([start+2,start+3])
@@ -178,6 +199,37 @@ class DrawCollider:
         shader.uniform_float("color",color)
         batch.draw(shader)
 
+#オペレータ　カスタムプロパティ['collider']追加
+class MYADDON_OT_add_collider(bpy.types.Operator):
+    bl_idname = "myaddon.myaddon_ot_add_collider"
+    bl_label = "コライダー追加"
+    bl_description = "['collider']カスタムプロパティを追加します"
+    bl_options = {"REGISTER","UNDO"}
+
+    def execute(self,context):
+        #"['collider']カスタムプロパティを追加
+        context.object["collider"] = "BOX"
+        context.object["collider_center"] = mathutils.Vector((0,0,0))
+        context.object["collider_size"] = mathutils.Vector((2,2,2))
+        return {"FINISHED"}
+
+#パネル　コライダー
+class OBJECT_PT_collider(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_collider"
+    bl_label = "Collider"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    # サブメニューの描画
+    def draw(self,context):
+        if "collider" in context.object:
+            self.layout.prop(context.object, '["collider"]',text="Type")
+            self.layout.prop(context.object, '["collider_center"]',text="Center")
+            self.layout.prop(context.object, '["collider_size"]',text="Size")
+        else:
+            self.layout.operator(MYADDON_OT_add_collider.bl_idname)
+
 #トップバーの拡張メニュー
 class TOPBAR_MT_my_menu(bpy.types.Menu):
     bl_idname = "TOPBAR_MT_my_menu"
@@ -198,6 +250,11 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
         self.layout.operator(MYADDON_OT_export_scene.bl_idname, 
         text=MYADDON_OT_export_scene.bl_label)
         
+        self.layout.operator(MYADDON_OT_add_collider.bl_idname)
+
+        self.layout.operator(OBJECT_PT_collider.bl_idname,
+        text=OBJECT_PT_collider.bl_label)
+
     def submenu(self,context):
         self.layout.menu(TOPBAR_MT_my_menu.bl_idname)
     
@@ -209,6 +266,8 @@ MYADDON_OT_export_scene,
 TOPBAR_MT_my_menu,
 OBJECT_PT_file_name,
 MYADDON_OT_add_filename,
+MYADDON_OT_add_collider,
+OBJECT_PT_collider,
 )
     
 def draw_meau_manual(self,context):
