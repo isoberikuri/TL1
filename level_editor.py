@@ -5,6 +5,7 @@ import gpu
 import gpu_extras.batch
 import copy
 import mathutils
+import json
 bl_info = {
     "name": "レベルエディタ",
     "author": "rikuri isobe",
@@ -50,7 +51,7 @@ class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelpe
     bl_label = "シーン出力"
     bl_description = "シーン情報をExportします"
     
-    filename_ext = ".scene"
+    filename_ext = ".json"
     def export(self):
         """ファイルに出力"""
         print("シーン情報出力開始・・・ %r" % self.filepath)
@@ -65,6 +66,50 @@ class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelpe
                 if object.parent:
                     print("Parent:" + object.parent.name)
                 print()
+
+    def export_json(self):
+        json_object_root = dict()
+        json_object_root["name"] = "scene"
+        json_object_root["objects"] = list()
+        for object in bpy.context.scene.objects:
+            if(object.parent):
+                continue
+            self.parse_scene_recursive_json(json_object_root["objects"],object,0)
+        json_text = json.dumps(json_object_root,ensure_ascii=False,cls=json.JSONEncoder,indent=4)
+        print(json_text)
+        with open(self.filepath,"wt",encoding="utf-8") as file:
+            file.write(json_text)
+
+    def parse_scene_recursive_json(self,
+    data_parent,object,level):
+        json_object = dict()
+        json_object["type"] = object.type
+        json_object["name"] = object.name
+
+        trans,rot,scale = object.matrix_local.decompose()
+        rot = rot.to_euler()
+        rot.x = math.degrees(rot.x)
+        rot.y = math.degrees(rot.y)
+        rot.z = math.degrees(rot.z)
+        transform = dict()
+        transform["translation"] = (trans.x,trans.y,trans.z)
+        transform["rotation"] = (rot.x,rot.y,rot.z)
+        transform["scaling"] = (scale.x,scale.y,scale.z)
+        json_object["transform"] = transform
+        if "file_name" in object:
+            json_object["file_name"] = object["file_name"]
+        if "collider" in object:
+            collider = dict()
+            collider["type"] = object["collider"]
+            collider["center"] = object["collider_center"].to_list()
+            collider["size"] = object["collider_size"].to_list()
+            json_object["collider"] = collider
+       
+        data_parent.append(json_object)
+        if len(object.children) > 0:
+            json_object["children"] = list()
+            for child in object.children:
+                self.parse_scene_recursive_json(json_object["children"],child,level + 1)
 
     def parse_scene_recursive(self,file,object,level):
         """シーン解析用再帰関数"""
@@ -92,7 +137,7 @@ class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelpe
             temp_str = indent + "CC %f %f %f"
             temp_str %= (object["collider_center"][0],object["collider_center"][1],object["collider_center"][2])
             self.write_and_print(file,temp_str)
-            temp_str = indent + "CC %f %f %f"
+            temp_str = indent + "CS %f %f %f"
             temp_str %= (object["collider_size"][0],object["collider_size"][1],object["collider_size"][2])
             self.write_and_print(file,temp_str)
         self.write_and_print(file, indent + 'END')
@@ -106,7 +151,7 @@ class MYADDON_OT_export_scene(bpy.types.Operator,bpy_extras.io_utils.ExportHelpe
         
     def execute(self,context):
         print("シーン情報をExportします")
-        self.export()
+        self.export_json()
         
         print("シーン情報をExportしました")
         self.report({'INFO'},"シーン情報をExportしました")
